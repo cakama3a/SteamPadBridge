@@ -27,6 +27,7 @@ MB_YESNO = 0x00000004
 MB_ICONINFORMATION = 0x00000040
 MB_ICONWARNING = 0x00000030
 MB_ICONERROR = 0x00000010
+MB_SETFOREGROUND = 0x00010000
 MB_TOPMOST = 0x00040000
 IDYES = 6
 
@@ -72,7 +73,7 @@ def is_vigembus_installed() -> bool:
 
 
 def show_message(title: str, text: str, error: bool = False):
-    flags = MB_OK | MB_TOPMOST | (MB_ICONERROR if error else MB_ICONINFORMATION)
+    flags = MB_OK | MB_SETFOREGROUND | MB_TOPMOST | (MB_ICONERROR if error else MB_ICONINFORMATION)
     ctypes.windll.user32.MessageBoxW(None, text, title, flags)
 
 
@@ -87,19 +88,24 @@ def show_about_once():
         if _about_open:
             return
         _about_open = True
-    try:
-        text = (
-            f"{APP_NAME} {__version__}\n"
-            "Steam Controller -> virtual Xbox 360 / DualShock 4 bridge\n\n"
-            "Vibe-coded by John Punch for Gamepadla.com.\n\n"
-            "Uses ViGEmBus and ViGEmClient by Nefarius Software Solutions e.U.\n"
-            "Uses pystray, Pillow, hidapi, vgamepad, and PyInstaller.\n\n"
-            "ViGEmBus is required for the virtual controller device."
-        )
-        show_message(f"About {APP_NAME}", text)
-    finally:
-        with _about_lock:
-            _about_open = False
+
+    def show_about_window():
+        global _about_open
+        try:
+            text = (
+                f"{APP_NAME} {__version__}\n"
+                "Steam Controller -> virtual Xbox 360 / DualShock 4 bridge\n\n"
+                "Vibe-coded by John Punch for Gamepadla.com.\n\n"
+                "Uses ViGEmBus and ViGEmClient by Nefarius Software Solutions e.U.\n"
+                "Uses pystray, Pillow, hidapi, vgamepad, and PyInstaller.\n\n"
+                "ViGEmBus is required for the virtual controller device."
+            )
+            show_message(f"About {APP_NAME}", text)
+        finally:
+            with _about_lock:
+                _about_open = False
+
+    threading.Thread(target=show_about_window, daemon=True).start()
 
 
 def run_driver_installer():
