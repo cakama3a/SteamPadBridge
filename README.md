@@ -14,7 +14,7 @@ It is meant for the simple case: start the app, pick Xbox 360 or DualShock 4 fro
 - Tray-only workflow with connection status.
 - First-run ViGEmBus check with a bundled installer option.
 - Portable PyInstaller `--onedir` build.
-- Optional release signing with a code-signing certificate/YubiKey.
+- Optional release signing for maintainers with a code-signing certificate.
 
 ## Requirements
 
@@ -46,6 +46,12 @@ ViGEmBus does not emulate DualSense. DualShock 4 is the PlayStation target suppo
 5. Use the tray menu to choose `Xbox 360 Controller` or `DualShock 4`.
 
 The app briefly reconnects the virtual device when you switch modes.
+
+## Testing
+
+Use the [Gamepadla online gamepad tester](https://gamepadla.com/test/) to verify sticks, buttons, triggers, and especially gyroscope input.
+
+The tester works with Steam Controller 2 (2026) both as a native controller and through SteamPadBridge's DualShock 4 emulation.
 
 ## Tray Menu
 
@@ -86,7 +92,7 @@ If your system does not provide the `py` launcher, use `python` instead.
 
 ## Build
 
-For a signed release build:
+For a normal unsigned build:
 
 ```bat
 build.bat
@@ -98,21 +104,15 @@ or:
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-By default the build searches `Cert:\CurrentUser\My` for a code-signing certificate whose subject contains `Ivan Panchenko`. If the private key is on a YubiKey or another hardware token, Windows should show the PIN prompt during the signing step.
+This creates `SteamPadBridge_PyInstaller` without requiring a code-signing certificate.
 
-For an unsigned local test build:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1 -SkipSign
-```
-
-To use another certificate subject:
+For a signed maintainer build:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\build.ps1 -CertificateSubject "Your Publisher Name"
+powershell -ExecutionPolicy Bypass -File .\build.ps1 -Sign -CertificateSubject "Your Publisher Name"
 ```
 
-The build verifies the final Authenticode signature. If verification is not `Valid`, the build fails.
+When signing is enabled, the build searches `Cert:\CurrentUser\My` for a matching code-signing certificate and verifies the final Authenticode signature.
 
 Before building, close any running `SteamPadBridge.exe`; Windows locks the output DLLs while the app is running.
 

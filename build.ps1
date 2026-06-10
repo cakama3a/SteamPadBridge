@@ -1,6 +1,7 @@
 param(
+    [switch]$Sign,
     [switch]$SkipSign,
-    [string]$CertificateSubject = "Ivan Panchenko",
+    [string]$CertificateSubject = "",
     [string]$TimestampServer = "http://timestamp.digicert.com"
 )
 
@@ -45,7 +46,7 @@ function Sign-ReleaseExe {
     Write-Log "Signing $FilePath"
     Write-Log "Certificate: $($cert.Subject)"
     Write-Log "Thumbprint: $($cert.Thumbprint)"
-    Write-Log "If your key is on a YubiKey/token, enter the PIN in the security prompt now."
+    Write-Log "If your certificate requires confirmation, complete the Windows security prompt now."
 
     $signature = Set-AuthenticodeSignature -FilePath $FilePath -Certificate $cert -TimestampServer $Timestamp
     $signature | Format-List | Out-String | Add-Content -Path $log -Encoding UTF8
@@ -109,10 +110,13 @@ try {
     Move-Item -Path (Join-Path $dist $appName) -Destination $out -ErrorAction Stop
     Copy-Item -Path (Join-Path $root "drivers") -Destination (Join-Path $out "drivers") -Recurse -Force -ErrorAction Stop
 
-    if (-not $SkipSign) {
+    if ($Sign -and -not $SkipSign) {
+        if ([string]::IsNullOrWhiteSpace($CertificateSubject)) {
+            throw "Use -CertificateSubject when signing, for example: -Sign -CertificateSubject `"Your Publisher Name`""
+        }
         Sign-ReleaseExe -FilePath (Join-Path $out "$appName.exe") -Subject $CertificateSubject -Timestamp $TimestampServer
     } else {
-        Write-Log "Skipping EXE signing because -SkipSign was provided."
+        Write-Log "Skipping EXE signing. Use -Sign -CertificateSubject `"Your Publisher Name`" to sign a release build."
     }
 
     if (Test-Path $dist) { Remove-Item -Recurse -Force -ErrorAction Stop $dist }
