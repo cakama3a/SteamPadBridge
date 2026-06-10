@@ -1,12 +1,14 @@
 # SteamPadBridge
 
-SteamPadBridge is a small Windows tray application that reads a Steam Controller directly over HID and exposes it to games as a virtual controller through ViGEmBus.
+SteamPadBridge is a small Windows tray application for Steam Controller 2 (2026). It reads the controller directly over HID and exposes it to games as a virtual controller through ViGEmBus.
+
+This project targets the second-generation Steam Controller from 2026, not the original 2015 Steam Controller.
 
 It is meant for the simple case: start the app, pick Xbox 360 or DualShock 4 from the tray menu, and play without adding the game to Steam as a non-Steam game.
 
 ## Features
 
-- Direct Steam Controller HID input.
+- Direct Steam Controller 2 (2026) HID input.
 - Virtual Xbox 360 output for broad XInput compatibility.
 - Virtual DualShock 4 output for PlayStation-style input and gyro/accelerometer support.
 - Tray-only workflow with connection status.
@@ -17,7 +19,7 @@ It is meant for the simple case: start the app, pick Xbox 360 or DualShock 4 fro
 ## Requirements
 
 - Windows 10 or Windows 11.
-- Steam Controller connected over USB or receiver.
+- Steam Controller 2 (2026) connected over USB or receiver.
 - ViGEmBus installed.
 - For development/builds: Python 3.10+.
 
@@ -31,7 +33,7 @@ Best for maximum compatibility. Games see a standard XInput controller with ABXY
 
 ### DualShock 4
 
-Best when the game supports PlayStation controllers or gyro input. SteamPadBridge feeds DS4 reports through ViGEmClient and maps Steam Controller IMU data into DS4 gyro/accelerometer fields.
+Best when the game supports PlayStation controllers or gyro input. SteamPadBridge feeds DS4 reports through ViGEmClient and maps Steam Controller 2 (2026) IMU data into DS4 gyro/accelerometer fields.
 
 ViGEmBus does not emulate DualSense. DualShock 4 is the PlayStation target supported by the public ViGEmBus driver.
 
@@ -47,7 +49,7 @@ The app briefly reconnects the virtual device when you switch modes.
 
 ## Tray Menu
 
-- `Status` shows the current Steam Controller and virtual output state.
+- `Status` shows the current Steam Controller 2 (2026) and virtual output state.
 - `Xbox 360 Controller` switches to XInput output.
 - `DualShock 4` switches to DS4 output.
 - `Install ViGEmBus` launches the bundled driver installer.
@@ -135,7 +137,7 @@ ViGEmBus is retired/archived by Nefarius, but its last signed release remains th
 - DualSense emulation is not supported by ViGEmBus.
 - DS4 gyro support depends on the installed ViGEmClient exposing extended DS4 reports.
 - Some games only read gyro from real HID devices or through their own controller stack; compatibility can vary.
-- The app currently targets one Steam Controller at a time.
+- The app currently targets one Steam Controller 2 (2026) at a time.
 
 ## License
 
