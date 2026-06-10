@@ -1,0 +1,6 @@
+hidapi>=0.14
+Pillow>=10.0
+pystray>=0.19
+pywin32>=306
+pyinstaller>=6.0
+vgamepad>=0.1.0

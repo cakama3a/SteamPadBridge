@@ -1,0 +1,14 @@
+.venv/
+.venv-build/
+build/
+dist/
+*.spec
+build.log
+__pycache__/
+*.py[cod]
+
+# Local release output. Publish this as a zip, but do not commit it.
+SteamPadBridge_PyInstaller/
+
+# Local configuration written next to the exe during development.
+config.json
