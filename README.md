@@ -6,6 +6,8 @@ This project targets the second-generation Steam Controller from 2026, not the o
 
 It is meant for the simple case: start the app, pick Xbox 360 or DualShock 4 from the tray menu, and play without adding the game to Steam as a non-Steam game.
 
+<img width="1176" height="585" alt="image" src="https://github.com/user-attachments/assets/eb5878ea-9e85-4f64-8b92-5b213c245555" />
+
 ## Features
 
 - Direct Steam Controller 2 (2026) HID input.
