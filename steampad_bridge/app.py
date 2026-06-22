@@ -16,6 +16,7 @@ from PIL import Image, ImageDraw
 from . import __version__
 from .state import OutputMode
 from .steam_controller import SteamControllerDirect
+from .sdl_controller import SDLControllerDirect
 from .vigem_bridge import ViGEmBridge
 
 
@@ -136,7 +137,10 @@ class RuntimeStatus:
 class SteamPadBridgeApp:
     def __init__(self):
         self.base_dir = app_dir()
-        self.status = RuntimeStatus(mode=self._load_mode())
+        self.gyro_aiming_enabled = False
+        self.gyro_aiming_trigger_required = True
+        self.status = RuntimeStatus()
+        self._load_config()
         self._icons = {color: self._make_icon(color) for color in ("green", "yellow", "red", "gray")}
         self.icon = pystray.Icon(APP_NAME, self._icons["gray"], APP_NAME)
         self.stop_event = threading.Event()
@@ -180,24 +184,35 @@ class SteamPadBridgeApp:
                     time.sleep(1.0)
                     continue
 
-                if self.bridge is None:
-                    self._connect_bridge()
+                with self.lock:
+                    if self.bridge is None:
+                        self._connect_bridge()
 
-                if self.controller is None and now - last_reconnect >= RECONNECT_INTERVAL:
-                    last_reconnect = now
-                    self._connect_controller()
+                    if self.controller is None and now - last_reconnect >= RECONNECT_INTERVAL:
+                        last_reconnect = now
+                        self._connect_controller()
 
-                if self.controller and self.bridge:
-                    changed = self.controller.update()
-                    self.status.steam_ok = self.controller.device is not None
-                    if changed:
-                        self.bridge.update(self.controller.state)
-                    label = self.controller.label if self.controller else "Steam Controller"
+                    controller = self.controller
+                    bridge = self.bridge
+
+                if controller and bridge:
+                    changed = controller.update()
+                    
+                    with self.lock:
+                        if self.controller is None or self.bridge is None:
+                            continue
+                        self.status.steam_ok = self.controller.device is not None
+                        if changed:
+                            self.bridge.gyro_aiming_enabled = self.gyro_aiming_enabled
+                            self.bridge.gyro_aiming_trigger_required = self.gyro_aiming_trigger_required
+                            self.bridge.update(self.controller.state)
+                    
+                    label = controller.label if controller else "Controller"
                     imu = " + IMU" if self.status.ds4_imu else ""
                     self._set_status(f"{label} -> {self.status.mode.value}{imu}", "green")
                 else:
                     self.status.steam_ok = False
-                    self._set_status("Waiting for Steam Controller", "yellow")
+                    self._set_status("Waiting for Controller", "yellow")
             except Exception as exc:
                 self._set_status(str(exc), "red")
                 self._close_runtime(keep_controller=False)
@@ -209,6 +224,13 @@ class SteamPadBridgeApp:
             self.controller = SteamControllerDirect.open_first()
         except Exception:
             self.controller = None
+            
+        if self.controller is None:
+            try:
+                self.controller = SDLControllerDirect.open_first()
+            except Exception:
+                self.controller = None
+                
         self.status.steam_ok = self.controller is not None
 
     def _connect_bridge(self):
@@ -232,8 +254,22 @@ class SteamPadBridgeApp:
             return
         with self.lock:
             self.status.mode = mode
-            self._save_mode(mode)
+            self._save_config()
             self._close_runtime()
+            self.icon.menu = self._build_menu()
+            self.icon.update_menu()
+
+    def _toggle_gyro_aiming(self):
+        with self.lock:
+            self.gyro_aiming_enabled = not self.gyro_aiming_enabled
+            self._save_config()
+            self.icon.menu = self._build_menu()
+            self.icon.update_menu()
+
+    def _toggle_gyro_trigger(self):
+        with self.lock:
+            self.gyro_aiming_trigger_required = not self.gyro_aiming_trigger_required
+            self._save_config()
             self.icon.menu = self._build_menu()
             self.icon.update_menu()
 
@@ -263,6 +299,19 @@ class SteamPadBridgeApp:
                 radio=True,
             ),
             pystray.Menu.SEPARATOR,
+            pystray.MenuItem(
+                "Enable Gyro Aiming (XInput)",
+                lambda icon, item: self._toggle_gyro_aiming(),
+                checked=lambda item: self.gyro_aiming_enabled,
+                enabled=lambda item: self.status.mode == OutputMode.XBOX360,
+            ),
+            pystray.MenuItem(
+                "Gyro Trigger Activation (RT)",
+                lambda icon, item: self._toggle_gyro_trigger(),
+                checked=lambda item: self.gyro_aiming_trigger_required,
+                enabled=lambda item: self.gyro_aiming_enabled and self.status.mode == OutputMode.XBOX360,
+            ),
+            pystray.Menu.SEPARATOR,
             pystray.MenuItem("Install ViGEmBus", lambda icon, item: run_driver_installer()),
             pystray.MenuItem("Reconnect", lambda icon, item: self._force_reconnect()),
             pystray.MenuItem("About", lambda icon, item: show_about_once()),
@@ -280,18 +329,26 @@ class SteamPadBridgeApp:
         self.stop_event.set()
         self.icon.stop()
 
-    def _load_mode(self) -> OutputMode:
+    def _load_config(self):
         try:
             with config_path().open("r", encoding="utf-8") as f:
-                value = json.load(f).get("mode", OutputMode.XBOX360.value)
-            return OutputMode(value)
+                cfg = json.load(f)
+            self.status.mode = OutputMode(cfg.get("mode", OutputMode.XBOX360.value))
+            self.gyro_aiming_enabled = cfg.get("gyro_aiming_enabled", False)
+            self.gyro_aiming_trigger_required = cfg.get("gyro_aiming_trigger_required", True)
         except Exception:
-            return OutputMode.XBOX360
+            self.status.mode = OutputMode.XBOX360
+            self.gyro_aiming_enabled = False
+            self.gyro_aiming_trigger_required = True
 
-    def _save_mode(self, mode: OutputMode):
+    def _save_config(self):
         try:
             with config_path().open("w", encoding="utf-8") as f:
-                json.dump({"mode": mode.value}, f, indent=2)
+                json.dump({
+                    "mode": self.status.mode.value,
+                    "gyro_aiming_enabled": self.gyro_aiming_enabled,
+                    "gyro_aiming_trigger_required": self.gyro_aiming_trigger_required,
+                }, f, indent=2)
         except Exception:
             pass
 
@@ -315,6 +372,15 @@ class SteamPadBridgeApp:
 
 
 def main():
+    # Set DPI awareness for high-DPI displays to fix blurry system tray and menus
+    if sys.platform == "win32":
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2) # PROCESS_PER_MONITOR_DPI_AWARE
+        except Exception:
+            try:
+                ctypes.windll.user32.SetProcessDPIAware()
+            except Exception:
+                pass
     SteamPadBridgeApp().run()
 
 

@@ -100,6 +100,8 @@ try {
         --name $appName `
         --collect-binaries hid `
         --collect-binaries vgamepad `
+        --collect-all sdl2 `
+        --collect-all sdl2dll `
         --add-data "$root\drivers;drivers" `
         "$root\main.py" 2>&1 | Add-Content $log
     if ($LASTEXITCODE -ne 0) {

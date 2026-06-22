@@ -4,3 +4,5 @@ pystray>=0.19
 pywin32>=306
 pyinstaller>=6.0
 vgamepad>=0.1.0
+pysdl2>=0.9.17
+pysdl2-dll>=2.32.10

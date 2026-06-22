@@ -5,7 +5,7 @@ import ctypes.wintypes as wt
 import os
 from pathlib import Path
 
-from .state import OutputMode, axis_to_s16, axis_to_u8, trigger_to_u8
+from .state import OutputMode, axis_to_s16, axis_to_u8, trigger_to_u8, clamp
 
 
 XUSB_GAMEPAD_DPAD_UP = 0x0001
@@ -137,6 +137,10 @@ class ViGEmBridge:
         self.client = None
         self.target = None
         self._has_ds4_ex = hasattr(self.dll, "vigem_target_ds4_update_ex")
+        self.gyro_aiming_enabled = False
+        self.gyro_aiming_trigger_required = True
+        self.gyro_yaw_invert = True
+        self.gyro_pitch_invert = False
         self._configure_api()
 
     def _configure_api(self):
@@ -222,14 +226,27 @@ class ViGEmBridge:
         for index, flag in mapping:
             if index < len(state.buttons) and state.buttons[index]:
                 buttons |= flag
+
+        rx = state.rx
+        ry = state.ry
+
+        if state.has_imu and self.gyro_aiming_enabled:
+            active = True
+            if self.gyro_aiming_trigger_required:
+                active = state.rt > 0.1
+            
+            if active:
+                rx = clamp(rx + state.gyro_y * 0.0002, -1.0, 1.0)
+                ry = clamp(ry + state.gyro_x * 0.0002, -1.0, 1.0)
+
         report = XUSB_REPORT(
             buttons,
             trigger_to_u8(state.lt),
             trigger_to_u8(state.rt),
             axis_to_s16(state.lx),
             axis_to_s16(state.ly),
-            axis_to_s16(state.rx),
-            axis_to_s16(state.ry),
+            axis_to_s16(rx),
+            axis_to_s16(ry),
         )
         self.dll.vigem_target_x360_update(self.client, self.target, report)
 
