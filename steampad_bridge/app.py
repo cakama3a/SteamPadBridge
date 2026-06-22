@@ -21,7 +21,7 @@ from .vigem_bridge import ViGEmBridge
 
 
 APP_NAME = "SteamPadBridge"
-POLL_INTERVAL = 0.001
+POLL_INTERVAL = 0.002
 RECONNECT_INTERVAL = 1.0
 MB_OK = 0x00000000
 MB_YESNO = 0x00000004
@@ -141,6 +141,7 @@ class SteamPadBridgeApp:
         self.gyro_aiming_trigger_required = True
         self.gyro_yaw_invert = True
         self.gyro_pitch_invert = False
+        self.gyro_sensitivity = 1.0
         self.status = RuntimeStatus()
         self._load_config()
         self._icons = {color: self._make_icon(color) for color in ("green", "yellow", "red", "gray")}
@@ -186,14 +187,44 @@ class SteamPadBridgeApp:
                     time.sleep(1.0)
                     continue
 
+                # 1. Read status under a brief lock (with disconnect clean up)
                 with self.lock:
-                    if self.bridge is None:
-                        self._connect_bridge()
+                    if self.controller is not None and self.controller.device is None:
+                        self.controller = None
+                        self.status.steam_ok = False
+                    need_bridge = self.bridge is None
+                    need_controller = self.controller is None
 
-                    if self.controller is None and now - last_reconnect >= RECONNECT_INTERVAL:
-                        last_reconnect = now
-                        self._connect_controller()
+                # 2. Perform connections OUTSIDE the lock
+                new_bridge = None
+                if need_bridge:
+                    new_bridge = self._create_bridge()
 
+                new_controller = None
+                if need_controller and now - last_reconnect >= RECONNECT_INTERVAL:
+                    last_reconnect = now
+                    new_controller = self._create_controller()
+
+                # 3. Store references under lock
+                if new_bridge or new_controller:
+                    with self.lock:
+                        if new_bridge:
+                            if self.bridge is None:
+                                self.bridge = new_bridge
+                                self.status.virtual_ok = True
+                                self.status.ds4_imu = self.bridge.supports_ds4_imu
+                            else:
+                                new_bridge.close()
+                                
+                        if new_controller:
+                            if self.controller is None:
+                                self.controller = new_controller
+                                self.status.steam_ok = True
+                            else:
+                                new_controller.close()
+
+                # 4. Get active references under lock
+                with self.lock:
                     controller = self.controller
                     bridge = self.bridge
 
@@ -203,49 +234,55 @@ class SteamPadBridgeApp:
                     with self.lock:
                         if self.controller is None or self.bridge is None:
                             continue
-                        self.status.steam_ok = self.controller.device is not None
+                        if self.controller.device is None:
+                            self.controller = None
+                            self.status.steam_ok = False
+                            continue
+                        self.status.steam_ok = True
                         if changed:
                             self.bridge.gyro_aiming_enabled = self.gyro_aiming_enabled
                             self.bridge.gyro_aiming_trigger_required = self.gyro_aiming_trigger_required
                             self.bridge.gyro_yaw_invert = self.gyro_yaw_invert
                             self.bridge.gyro_pitch_invert = self.gyro_pitch_invert
+                            self.bridge.gyro_sensitivity = self.gyro_sensitivity
                             self.bridge.update(self.controller.state)
                     
                     label = controller.label if controller else "Controller"
                     imu = " + IMU" if self.status.ds4_imu else ""
                     self._set_status(f"{label} -> {self.status.mode.value}{imu}", "green")
+                    time.sleep(POLL_INTERVAL)
                 else:
                     self.status.steam_ok = False
                     self._set_status("Waiting for Controller", "yellow")
+                    time.sleep(0.1)  # Sleep 100ms when waiting for controller to save CPU
             except Exception as exc:
                 self._set_status(str(exc), "red")
                 self._close_runtime(keep_controller=False)
                 time.sleep(1.0)
-            time.sleep(POLL_INTERVAL)
 
-    def _connect_controller(self):
+    def _create_bridge(self) -> ViGEmBridge:
+        bridge = ViGEmBridge(self.status.mode)
+        bridge.gyro_aiming_enabled = self.gyro_aiming_enabled
+        bridge.gyro_aiming_trigger_required = self.gyro_aiming_trigger_required
+        bridge.gyro_yaw_invert = self.gyro_yaw_invert
+        bridge.gyro_pitch_invert = self.gyro_pitch_invert
+        bridge.gyro_sensitivity = self.gyro_sensitivity
+        bridge.connect()
+        return bridge
+
+    def _create_controller(self):
+        controller = None
         try:
-            self.controller = SteamControllerDirect.open_first()
+            controller = SteamControllerDirect.open_first()
         except Exception:
-            self.controller = None
+            controller = None
             
-        if self.controller is None:
+        if controller is None:
             try:
-                self.controller = SDLControllerDirect.open_first()
+                controller = SDLControllerDirect.open_first()
             except Exception:
-                self.controller = None
-                
-        self.status.steam_ok = self.controller is not None
-
-    def _connect_bridge(self):
-        self.bridge = ViGEmBridge(self.status.mode)
-        self.bridge.gyro_aiming_enabled = self.gyro_aiming_enabled
-        self.bridge.gyro_aiming_trigger_required = self.gyro_aiming_trigger_required
-        self.bridge.gyro_yaw_invert = self.gyro_yaw_invert
-        self.bridge.gyro_pitch_invert = self.gyro_pitch_invert
-        self.bridge.connect()
-        self.status.virtual_ok = True
-        self.status.ds4_imu = self.bridge.supports_ds4_imu
+                controller = None
+        return controller
 
     def _close_runtime(self, keep_controller: bool = True):
         if self.bridge:
@@ -303,6 +340,15 @@ class SteamPadBridgeApp:
             self.icon.menu = self._build_menu()
             self.icon.update_menu()
 
+    def _set_gyro_sensitivity(self, value: float):
+        with self.lock:
+            self.gyro_sensitivity = value
+            if self.bridge:
+                self.bridge.gyro_sensitivity = self.gyro_sensitivity
+            self._save_config()
+            self.icon.menu = self._build_menu()
+            self.icon.update_menu()
+
     def _set_status(self, text: str, color: str):
         if text == self._last_status_text and color == self._last_status_color:
             return
@@ -339,6 +385,47 @@ class SteamPadBridgeApp:
                 "Gyro Trigger Activation (RT)",
                 lambda icon, item: self._toggle_gyro_trigger(),
                 checked=lambda item: self.gyro_aiming_trigger_required,
+                enabled=lambda item: self.gyro_aiming_enabled and self.status.mode == OutputMode.XBOX360,
+            ),
+            pystray.MenuItem(
+                "Gyro Sensitivity",
+                pystray.Menu(
+                    pystray.MenuItem(
+                        "0.5x",
+                        lambda icon, item: self._set_gyro_sensitivity(0.5),
+                        checked=lambda item: self.gyro_sensitivity == 0.5,
+                    ),
+                    pystray.MenuItem(
+                        "1.0x (Default)",
+                        lambda icon, item: self._set_gyro_sensitivity(1.0),
+                        checked=lambda item: self.gyro_sensitivity == 1.0,
+                    ),
+                    pystray.MenuItem(
+                        "1.5x",
+                        lambda icon, item: self._set_gyro_sensitivity(1.5),
+                        checked=lambda item: self.gyro_sensitivity == 1.5,
+                    ),
+                    pystray.MenuItem(
+                        "2.0x",
+                        lambda icon, item: self._set_gyro_sensitivity(2.0),
+                        checked=lambda item: self.gyro_sensitivity == 2.0,
+                    ),
+                    pystray.MenuItem(
+                        "3.0x",
+                        lambda icon, item: self._set_gyro_sensitivity(3.0),
+                        checked=lambda item: self.gyro_sensitivity == 3.0,
+                    ),
+                    pystray.MenuItem(
+                        "4.0x",
+                        lambda icon, item: self._set_gyro_sensitivity(4.0),
+                        checked=lambda item: self.gyro_sensitivity == 4.0,
+                    ),
+                    pystray.MenuItem(
+                        "5.0x",
+                        lambda icon, item: self._set_gyro_sensitivity(5.0),
+                        checked=lambda item: self.gyro_sensitivity == 5.0,
+                    ),
+                ),
                 enabled=lambda item: self.gyro_aiming_enabled and self.status.mode == OutputMode.XBOX360,
             ),
             pystray.MenuItem(
@@ -380,12 +467,14 @@ class SteamPadBridgeApp:
             self.gyro_aiming_trigger_required = cfg.get("gyro_aiming_trigger_required", True)
             self.gyro_yaw_invert = cfg.get("gyro_yaw_invert", True)
             self.gyro_pitch_invert = cfg.get("gyro_pitch_invert", False)
+            self.gyro_sensitivity = cfg.get("gyro_sensitivity", 1.0)
         except Exception:
             self.status.mode = OutputMode.XBOX360
             self.gyro_aiming_enabled = False
             self.gyro_aiming_trigger_required = True
             self.gyro_yaw_invert = True
             self.gyro_pitch_invert = False
+            self.gyro_sensitivity = 1.0
 
     def _save_config(self):
         try:
@@ -396,6 +485,7 @@ class SteamPadBridgeApp:
                     "gyro_aiming_trigger_required": self.gyro_aiming_trigger_required,
                     "gyro_yaw_invert": self.gyro_yaw_invert,
                     "gyro_pitch_invert": self.gyro_pitch_invert,
+                    "gyro_sensitivity": self.gyro_sensitivity,
                 }, f, indent=2)
         except Exception:
             pass
@@ -429,7 +519,20 @@ def main():
                 ctypes.windll.user32.SetProcessDPIAware()
             except Exception:
                 pass
-    SteamPadBridgeApp().run()
+        # Set scheduler granularity to 1ms to make time.sleep() accurate and reduce CPU usage
+        try:
+            ctypes.windll.winmm.timeBeginPeriod(1)
+        except Exception:
+            pass
+
+    try:
+        SteamPadBridgeApp().run()
+    finally:
+        if sys.platform == "win32":
+            try:
+                ctypes.windll.winmm.timeEndPeriod(1)
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":

@@ -141,6 +141,7 @@ class ViGEmBridge:
         self.gyro_aiming_trigger_required = True
         self.gyro_yaw_invert = True
         self.gyro_pitch_invert = False
+        self.gyro_sensitivity = 1.0
         self._configure_api()
 
     def _configure_api(self):
@@ -238,8 +239,8 @@ class ViGEmBridge:
             if active:
                 yaw_val = -state.gyro_y if self.gyro_yaw_invert else state.gyro_y
                 pitch_val = -state.gyro_x if self.gyro_pitch_invert else state.gyro_x
-                rx = clamp(rx + yaw_val * 0.0002, -1.0, 1.0)
-                ry = clamp(ry + pitch_val * 0.0002, -1.0, 1.0)
+                rx = clamp(rx + yaw_val * 0.0002 * self.gyro_sensitivity, -1.0, 1.0)
+                ry = clamp(ry + pitch_val * 0.0002 * self.gyro_sensitivity, -1.0, 1.0)
 
         report = XUSB_REPORT(
             buttons,

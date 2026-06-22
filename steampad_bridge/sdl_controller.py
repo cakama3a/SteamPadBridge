@@ -89,6 +89,7 @@ class SDLControllerDirect:
         self._gyro_enabled = False
         self._accel_enabled = False
         self._name = "Game Controller"
+        self._last_pump = 0.0
 
         name_bytes = sdl2.SDL_GameControllerName(self.device)
         if name_bytes:
@@ -130,10 +131,17 @@ class SDLControllerDirect:
         if not self.device:
             return False
 
-        sdl2.SDL_PumpEvents()
+        now = time.perf_counter()
+        if now - self._last_pump >= 0.1:
+            sdl2.SDL_PumpEvents()
+            self._last_pump = now
+        else:
+            sdl2.SDL_GameControllerUpdate()
+            sdl2.SDL_SensorUpdate()
 
         # Check if the device is still connected
         joystick = sdl2.SDL_GameControllerGetJoystick(self.device)
+
         if not joystick or not sdl2.SDL_JoystickGetAttached(joystick):
             self.close()
             return False
