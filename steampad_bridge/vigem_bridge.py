@@ -236,8 +236,10 @@ class ViGEmBridge:
                 active = state.rt > 0.1
             
             if active:
-                rx = clamp(rx + state.gyro_y * 0.0002, -1.0, 1.0)
-                ry = clamp(ry + state.gyro_x * 0.0002, -1.0, 1.0)
+                yaw_val = -state.gyro_y if self.gyro_yaw_invert else state.gyro_y
+                pitch_val = -state.gyro_x if self.gyro_pitch_invert else state.gyro_x
+                rx = clamp(rx + yaw_val * 0.0002, -1.0, 1.0)
+                ry = clamp(ry + pitch_val * 0.0002, -1.0, 1.0)
 
         report = XUSB_REPORT(
             buttons,

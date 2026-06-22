@@ -24,12 +24,12 @@ def init_sdl():
         
     with _sdl_init_lock:
         if not _sdl_initialized:
-            # Set hints to enable advanced drivers
+            # Set hints to enable advanced drivers (explicitly disabling Steam so SDL2 won't hook it)
             sdl2.SDL_SetHint(sdl2.SDL_HINT_JOYSTICK_HIDAPI_PS4, b"1")
             sdl2.SDL_SetHint(sdl2.SDL_HINT_JOYSTICK_HIDAPI_PS4_RUMBLE, b"1")
             sdl2.SDL_SetHint(sdl2.SDL_HINT_JOYSTICK_HIDAPI_PS5, b"1")
             sdl2.SDL_SetHint(sdl2.SDL_HINT_JOYSTICK_HIDAPI_PS5_RUMBLE, b"1")
-            sdl2.SDL_SetHint(sdl2.SDL_HINT_JOYSTICK_HIDAPI_STEAM, b"1")
+            sdl2.SDL_SetHint(sdl2.SDL_HINT_JOYSTICK_HIDAPI_STEAM, b"0")
             sdl2.SDL_SetHint(sdl2.SDL_HINT_JOYSTICK_HIDAPI_SWITCH, b"1")
 
             if sdl2.SDL_Init(sdl2.SDL_INIT_GAMECONTROLLER | sdl2.SDL_INIT_SENSOR) == 0:
@@ -69,6 +69,14 @@ def is_virtual_controller(controller) -> bool:
             return True
             
     return False
+
+
+def is_steam_controller(controller) -> bool:
+    joystick = sdl2.SDL_GameControllerGetJoystick(controller)
+    if not joystick:
+        return False
+    vid = sdl2.SDL_JoystickGetVendor(joystick)
+    return vid == 0x28DE
 
 
 class SDLControllerDirect:
@@ -112,7 +120,7 @@ class SDLControllerDirect:
             if sdl2.SDL_IsGameController(i):
                 ctrl = sdl2.SDL_GameControllerOpen(i)
                 if ctrl:
-                    if is_virtual_controller(ctrl):
+                    if is_virtual_controller(ctrl) or is_steam_controller(ctrl):
                         sdl2.SDL_GameControllerClose(ctrl)
                         continue
                     return cls(ctrl)

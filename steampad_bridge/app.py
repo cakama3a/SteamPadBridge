@@ -139,6 +139,8 @@ class SteamPadBridgeApp:
         self.base_dir = app_dir()
         self.gyro_aiming_enabled = False
         self.gyro_aiming_trigger_required = True
+        self.gyro_yaw_invert = True
+        self.gyro_pitch_invert = False
         self.status = RuntimeStatus()
         self._load_config()
         self._icons = {color: self._make_icon(color) for color in ("green", "yellow", "red", "gray")}
@@ -205,6 +207,8 @@ class SteamPadBridgeApp:
                         if changed:
                             self.bridge.gyro_aiming_enabled = self.gyro_aiming_enabled
                             self.bridge.gyro_aiming_trigger_required = self.gyro_aiming_trigger_required
+                            self.bridge.gyro_yaw_invert = self.gyro_yaw_invert
+                            self.bridge.gyro_pitch_invert = self.gyro_pitch_invert
                             self.bridge.update(self.controller.state)
                     
                     label = controller.label if controller else "Controller"
@@ -235,6 +239,10 @@ class SteamPadBridgeApp:
 
     def _connect_bridge(self):
         self.bridge = ViGEmBridge(self.status.mode)
+        self.bridge.gyro_aiming_enabled = self.gyro_aiming_enabled
+        self.bridge.gyro_aiming_trigger_required = self.gyro_aiming_trigger_required
+        self.bridge.gyro_yaw_invert = self.gyro_yaw_invert
+        self.bridge.gyro_pitch_invert = self.gyro_pitch_invert
         self.bridge.connect()
         self.status.virtual_ok = True
         self.status.ds4_imu = self.bridge.supports_ds4_imu
@@ -255,13 +263,15 @@ class SteamPadBridgeApp:
         with self.lock:
             self.status.mode = mode
             self._save_config()
-            self._close_runtime()
+            self._close_runtime(keep_controller=False)
             self.icon.menu = self._build_menu()
             self.icon.update_menu()
 
     def _toggle_gyro_aiming(self):
         with self.lock:
             self.gyro_aiming_enabled = not self.gyro_aiming_enabled
+            if self.bridge:
+                self.bridge.gyro_aiming_enabled = self.gyro_aiming_enabled
             self._save_config()
             self.icon.menu = self._build_menu()
             self.icon.update_menu()
@@ -269,6 +279,26 @@ class SteamPadBridgeApp:
     def _toggle_gyro_trigger(self):
         with self.lock:
             self.gyro_aiming_trigger_required = not self.gyro_aiming_trigger_required
+            if self.bridge:
+                self.bridge.gyro_aiming_trigger_required = self.gyro_aiming_trigger_required
+            self._save_config()
+            self.icon.menu = self._build_menu()
+            self.icon.update_menu()
+
+    def _toggle_gyro_yaw_invert(self):
+        with self.lock:
+            self.gyro_yaw_invert = not self.gyro_yaw_invert
+            if self.bridge:
+                self.bridge.gyro_yaw_invert = self.gyro_yaw_invert
+            self._save_config()
+            self.icon.menu = self._build_menu()
+            self.icon.update_menu()
+
+    def _toggle_gyro_pitch_invert(self):
+        with self.lock:
+            self.gyro_pitch_invert = not self.gyro_pitch_invert
+            if self.bridge:
+                self.bridge.gyro_pitch_invert = self.gyro_pitch_invert
             self._save_config()
             self.icon.menu = self._build_menu()
             self.icon.update_menu()
@@ -311,6 +341,18 @@ class SteamPadBridgeApp:
                 checked=lambda item: self.gyro_aiming_trigger_required,
                 enabled=lambda item: self.gyro_aiming_enabled and self.status.mode == OutputMode.XBOX360,
             ),
+            pystray.MenuItem(
+                "Invert Gyro Yaw (Left/Right)",
+                lambda icon, item: self._toggle_gyro_yaw_invert(),
+                checked=lambda item: self.gyro_yaw_invert,
+                enabled=lambda item: self.gyro_aiming_enabled and self.status.mode == OutputMode.XBOX360,
+            ),
+            pystray.MenuItem(
+                "Invert Gyro Pitch (Up/Down)",
+                lambda icon, item: self._toggle_gyro_pitch_invert(),
+                checked=lambda item: self.gyro_pitch_invert,
+                enabled=lambda item: self.gyro_aiming_enabled and self.status.mode == OutputMode.XBOX360,
+            ),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Install ViGEmBus", lambda icon, item: run_driver_installer()),
             pystray.MenuItem("Reconnect", lambda icon, item: self._force_reconnect()),
@@ -336,10 +378,14 @@ class SteamPadBridgeApp:
             self.status.mode = OutputMode(cfg.get("mode", OutputMode.XBOX360.value))
             self.gyro_aiming_enabled = cfg.get("gyro_aiming_enabled", False)
             self.gyro_aiming_trigger_required = cfg.get("gyro_aiming_trigger_required", True)
+            self.gyro_yaw_invert = cfg.get("gyro_yaw_invert", True)
+            self.gyro_pitch_invert = cfg.get("gyro_pitch_invert", False)
         except Exception:
             self.status.mode = OutputMode.XBOX360
             self.gyro_aiming_enabled = False
             self.gyro_aiming_trigger_required = True
+            self.gyro_yaw_invert = True
+            self.gyro_pitch_invert = False
 
     def _save_config(self):
         try:
@@ -348,6 +394,8 @@ class SteamPadBridgeApp:
                     "mode": self.status.mode.value,
                     "gyro_aiming_enabled": self.gyro_aiming_enabled,
                     "gyro_aiming_trigger_required": self.gyro_aiming_trigger_required,
+                    "gyro_yaw_invert": self.gyro_yaw_invert,
+                    "gyro_pitch_invert": self.gyro_pitch_invert,
                 }, f, indent=2)
         except Exception:
             pass
